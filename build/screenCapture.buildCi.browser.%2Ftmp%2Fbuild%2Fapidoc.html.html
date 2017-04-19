@@ -1,0 +1,204 @@
+<html><head></head><body><div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a href="https://github.com/philj/gulp-kss">gulp-kss (v0.0.2)</a>
+</h1>
+<h4>Gulp plugin for KSS (Knyle Style Sheets) documentation generation</h4>
+<div class="apidocSectionDiv"><a href="#apidoc.tableOfContents" id="apidoc.tableOfContents"><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.gulp-kss">module gulp-kss</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.gulp-kss.gulp-kss">
+            function <span class="apidocSignatureSpan"></span>gulp-kss
+            <span class="apidocSignatureSpan">(opt)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.gulp-kss" id="apidoc.module.gulp-kss">module gulp-kss</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.gulp-kss.gulp-kss" id="apidoc.element.gulp-kss.gulp-kss">
+        function <span class="apidocSignatureSpan"></span>gulp-kss
+        <span class="apidocSignatureSpan">(opt)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">gulp-kss = function (opt) {
+    'use strict';
+    if (!opt) opt = {};
+    if (!opt.templateDirectory) opt.templateDirectory = __dirname + '/node_modules/kss/lib/template';
+    if (!opt.kssOpts) opt.kssOpts = {};
+
+    var buffer = [];
+    var firstFile = null;
+
+<span class="apidocCodeCommentSpan">    /* Is called for each file and writes all files to buffer */
+</span>    function bufferContents(file){
+        if (file.isNull()) return; // ignore
+        if (file.isStream()) return this.emit('error', new PluginError('gulp-kss',  'Streaming not supported'));
+
+        if (!firstFile) firstFile = file;
+
+        buffer.push(file.contents.toString('utf8'));
+    }
+
+    /* Is called when all files were added to buffer */
+    function endStream(){
+        var template = fs.readFileSync(path.join(opt.templateDirectory, 'index.html'), 'utf8');
+        template = handlebars.compile(template);
+
+        var self = this;
+
+        kss.parse(buffer, opt.kssOpts, function (err, styleguide) {
+            if (err) console.log('Error', error);
+
+                var sections = styleguide.section('*.'),
+                    i, sectionCount = sections.length,
+                    sectionRoots = [], currentRoot,
+                    rootCount, childSections = [];
+
+
+            // Accumulate all of the sections' first indexes
+            // in case they don't have a root element.
+            for (i = 0; i &lt; sectionCount; i += 1) {
+                currentRoot = sections[i].reference().match(/[0-9]*\.?/)[0].replace('.', '');
+
+                if (!~sectionRoots.indexOf(currentRoot)) {
+                    sectionRoots.push(currentRoot);
+                }
+            }
+
+            sectionRoots.sort();
+            rootCount = sectionRoots.length;
+
+            handlebarHelpers(handlebars, styleguide);
+
+            // Now, group all of the sections by their root
+            // reference, and make a page for each.
+            for (i = 0; i &lt; rootCount; i += 1) {
+                childSections = styleguide.section(sectionRoots[i]+'.*');
+
+                var content = template({
+                    styleguide: styleguide,
+                    sections: jsonSections(childSections),
+                    rootNumber: sectionRoots[i],
+                    sectionRoots: sectionRoots,
+                    overview: false,
+                    argv: {}
+                });
+
+                var joinedPath = path.join(firstFile.base, 'section-' + sectionRoots[i] + '.html');
+
+                var file = new File({
+                  cwd: firstFile.cwd,
+                  base: firstFile.base,
+                  path: joinedPath,
+                  contents: new Buffer(content)
+                });
+
+                self.emit('data', file);
+            }
+
+            // Generate Overview File
+            if (opt.overview) {
+                gulp.src(opt.overview)
+                    .pipe(through(function (file) {
+
+                        var content = template({
+                            styleguide: styleguide,
+                            sectionRoots: sectionRoots,
+                            sections: jsonSections(childSections),
+                            rootNumber: 0,
+                            argv: {},
+                            overview: marked(file.contents.toString('utf8'), 'utf8')
+                        });
+
+                        var joinedPath = path.join(firstFile.base, 'index.html');
+
+                        var file = new File({
+                            cwd: firstFile.cwd,
+                            base: firstFile.base,
+                            path: joinedPath,
+                            contents: new Buffer(content)
+                        });
+
+                        self.emit('data', file);
+                    }));
+            }
+            // Copy template assets, less compilation added because default template uses it
+            gulp.src(path.join(opt.templateDirectory, '/**/*.less'))
+                .pipe(gulpless())
+                .pipe(through(function (file) {
+
+                self.emit('data', file);
+            }));
+
+            gulp.src(path.join(opt.templateDirectory, '/**/*.js')) ...</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
+</body></html>
